@@ -1,0 +1,138 @@
+# ============================================================================
+# ProperBackup — Full Stack (compose up)
+# ============================================================================
+# Services:
+#   db       — PostgreSQL 16 (buffer database)
+#   buffer   — Kotlin/Javalin backend (API + SSE + flush)
+#   web      — React/Vite frontend (nginx proxy → buffer)
+#   agent    — Kotlin agent simulating a customer VPS
+#   storage  — Restrictive storage gateway (list + upload only, 900 MB chunks)
+# ============================================================================
+
+services:
+
+  # ---------- PostgreSQL ----------
+  db:
+    image: postgres:16-alpine
+    container_name: pb-db
+    environment:
+      POSTGRES_DB: properbackup
+      POSTGRES_USER: properbackup
+      POSTGRES_PASSWORD: ${PB_DB_PASSWORD:-dev-pg-pass}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "properbackup"]
+      interval: 5s
+      retries: 10
+    networks:
+      - pb
+
+  # ---------- Buffer (backend API) ----------
+  buffer:
+    build:
+      context: ..
+      dockerfile: properbackup-stack/Dockerfile.buffer
+    container_name: pb-buffer
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PROPERBACKUP_DB_PASSWORD: ${PB_DB_PASSWORD:-dev-pg-pass}
+      PROPERBACKUP_JWT_SECRET: ${PB_JWT_SECRET:-dev-jwt-secret}
+      PROPERBACKUP_UPLOAD_TOKEN: ${PB_UPLOAD_TOKEN:-dev-token-local}
+      PROPERBACKUP_LOG_INGEST_TOKEN: ${PB_UPLOAD_TOKEN:-dev-token-local}
+      PROPERBACKUP_SERVICE_ADMIN_SEED_CODE: ${PB_ADMIN_SEED:-dt5mkom8Serwer.13}
+      PROPERBACKUP_OVH_MOCK: "true"
+    ports:
+      - "7100:7100"
+    volumes:
+      - buffer-storage:/opt/properbackup/storage
+      - buffer-inbox:/opt/properbackup/inbox
+    command: >
+      bin/properbackup-buffer
+      --db-url jdbc:postgresql://db:5432/properbackup
+      --db-user properbackup
+      --db-pass ${PB_DB_PASSWORD:-dev-pg-pass}
+      --storage /opt/properbackup/storage
+      --inbox /opt/properbackup/inbox
+      --token ${PB_UPLOAD_TOKEN:-dev-token-local}
+    networks:
+      - pb
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:7100/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # ---------- Web Panel (nginx + React) ----------
+  web:
+    build:
+      context: ../properbackup-web
+      dockerfile: Dockerfile
+      args:
+        VITE_BUFFER_URL: /api
+        VITE_BUFFER_TOKEN: ${PB_UPLOAD_TOKEN:-dev-token-local}
+    container_name: pb-web
+    depends_on:
+      buffer:
+        condition: service_healthy
+    ports:
+      - "8080:80"
+    networks:
+      - pb
+
+  # ---------- Agent (customer VPS simulation) ----------
+  agent:
+    build:
+      context: ..
+      dockerfile: properbackup-stack/Dockerfile.agent
+    container_name: pb-agent
+    depends_on:
+      buffer:
+        condition: service_healthy
+    environment:
+      PROPERBACKUP_USER_ID: ${PB_USER_ID:-demo-user-001}
+      PROPERBACKUP_SERVER_ID: ${PB_SERVER_ID:-demo-server-001}
+      PROPERBACKUP_BUFFER_URL: http://buffer:7100
+      PROPERBACKUP_UPLOAD_TOKEN: ${PB_UPLOAD_TOKEN:-dev-token-local}
+      PROPERBACKUP_ENCRYPTION_PASSWORD: ${PB_ENCRYPTION_PASS:-dev-encrypt-pass}
+      PROPERBACKUP_POLL_INTERVAL: "60"
+    volumes:
+      - ./sample-data:/data/backup-source:ro
+      - agent-state:/data/state
+    networks:
+      - pb
+    mem_limit: 256m
+    cpus: 0.5
+
+  # ---------- Restrictive Storage (list + upload only, 900 MB chunks) ----------
+  storage:
+    build:
+      context: ./storage-gateway
+      dockerfile: Dockerfile
+    container_name: pb-storage
+    environment:
+      STORAGE_AUTH_TOKEN: ${PB_STORAGE_TOKEN:-dev-storage-token}
+      MAX_CHUNK_BYTES: "943718400"  # 900 MB
+      STORAGE_DIR: /data/objects
+    ports:
+      - "9000:9000"
+    volumes:
+      - storage-objects:/data/objects
+    networks:
+      - pb
+
+volumes:
+  pgdata:
+  buffer-storage:
+  buffer-inbox:
+  agent-state:
+  storage-objects:
+
+networks:
+  pb:
+    driver: bridge

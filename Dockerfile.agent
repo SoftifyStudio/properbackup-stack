@@ -1,0 +1,51 @@
+# Multi-stage build for ProperBackup Agent
+# Handles the properbackup-shared dependency via a temporary Gradle multi-project setup.
+
+FROM eclipse-temurin:21-jdk-alpine AS builder
+
+RUN apk add --no-cache bash
+
+WORKDIR /workspace
+
+# Create root Gradle multi-project structure
+COPY properbackup-stack/settings.gradle.kts properbackup-stack/build.gradle.kts ./
+COPY properbackup-stack/gradle/ gradle/
+COPY properbackup-stack/gradlew ./
+RUN chmod +x gradlew
+
+# Copy shared project
+COPY properbackup-shared/ properbackup-shared/
+
+# Copy agent project
+COPY properbackup-agent/ properbackup-agent/
+
+# Build agent (includes shared as dependency)
+RUN ./gradlew :properbackup-agent:installDist --no-daemon -x test
+
+# ---- Runtime ----
+FROM eclipse-temurin:21-jre-alpine
+
+LABEL maintainer="daniel@properbackup.com"
+LABEL description="ProperBackup Agent — encrypted differential backup agent (VPS simulation)"
+
+RUN addgroup -S pb && adduser -S pb -G pb
+
+COPY --from=builder /workspace/properbackup-agent/build/install/properbackup-agent/ /opt/properbackup-agent/
+COPY properbackup-stack/docker-entrypoint-agent.sh /opt/properbackup-agent/docker-entrypoint.sh
+
+RUN mkdir -p /data/state /data/conf.d /data/backup-source \
+ && chown -R pb:pb /data /opt/properbackup-agent \
+ && chmod +x /opt/properbackup-agent/docker-entrypoint.sh
+
+USER pb
+
+ENV PROPERBACKUP_USER_ID=""
+ENV PROPERBACKUP_SERVER_ID=""
+ENV PROPERBACKUP_BUFFER_URL="http://buffer:7100"
+ENV PROPERBACKUP_UPLOAD_TOKEN=""
+ENV PROPERBACKUP_ENCRYPTION_PASSWORD=""
+ENV PROPERBACKUP_POLL_INTERVAL="60"
+
+VOLUME ["/data/backup-source", "/data/state", "/data/conf.d"]
+
+ENTRYPOINT ["/opt/properbackup-agent/docker-entrypoint.sh"]

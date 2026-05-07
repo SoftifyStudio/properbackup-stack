@@ -1,0 +1,42 @@
+# Multi-stage build for ProperBackup Buffer
+# Handles the properbackup-shared dependency via a temporary Gradle multi-project setup.
+
+FROM eclipse-temurin:21-jdk-alpine AS builder
+
+RUN apk add --no-cache bash
+
+WORKDIR /workspace
+
+# Create root Gradle multi-project structure
+COPY properbackup-stack/settings.gradle.kts properbackup-stack/build.gradle.kts ./
+COPY properbackup-stack/gradle/ gradle/
+COPY properbackup-stack/gradlew ./
+RUN chmod +x gradlew
+
+# Copy shared project
+COPY properbackup-shared/ properbackup-shared/
+
+# Copy buffer project
+COPY properbackup-buffer/ properbackup-buffer/
+
+# Build buffer (includes shared as dependency)
+RUN ./gradlew :properbackup-buffer:installDist --no-daemon -x test
+
+# ---- Runtime ----
+FROM eclipse-temurin:21-jre-alpine
+
+LABEL maintainer="daniel@properbackup.com"
+LABEL description="ProperBackup Buffer — backend API + SSE + storage orchestration"
+
+WORKDIR /opt/properbackup
+COPY --from=builder /workspace/properbackup-buffer/build/install/properbackup-buffer/ ./
+
+RUN mkdir -p /opt/properbackup/storage /opt/properbackup/inbox
+
+EXPOSE 7100
+
+ENTRYPOINT ["bin/properbackup-buffer"]
+CMD ["--db-url", "jdbc:postgresql://db:5432/properbackup", \
+     "--db-user", "properbackup", \
+     "--storage", "/opt/properbackup/storage", \
+     "--inbox", "/opt/properbackup/inbox"]

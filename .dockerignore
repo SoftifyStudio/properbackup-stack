@@ -1,0 +1,18 @@
+# Git
+**/.git
+**/.gitignore
+
+# Build artifacts
+**/build
+**/.gradle
+**/.kotlin
+**/node_modules
+**/dist
+
+# IDE
+**/.idea
+**/.vscode
+**/*.iml
+
+# Desktop (not needed for compose)
+properbackup-desktop
