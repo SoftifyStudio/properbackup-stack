@@ -68,20 +68,24 @@ services:
       retries: 10
       start_period: 30s
 
-  # ---------- Web Panel (nginx + React) ----------
+  # ---------- Web Panel (Vite dev server) ----------
   web:
     build:
       context: ../properbackup-web
-      dockerfile: Dockerfile
-      args:
-        VITE_BUFFER_URL: /api
-        VITE_BUFFER_TOKEN: ${PB_UPLOAD_TOKEN:-dev-token-local}
+      dockerfile: ../properbackup-stack/Dockerfile.web-dev
     container_name: pb-web
     depends_on:
       buffer:
         condition: service_healthy
+    environment:
+      VITE_PROXY_TARGET: http://buffer:7100
+      VITE_BUFFER_URL: /api
+      VITE_BUFFER_TOKEN: ${PB_UPLOAD_TOKEN:-dev-token-local}
     ports:
-      - "8080:80"
+      - "8080:5173"
+    volumes:
+      - ../properbackup-web/src:/app/src
+      - ../properbackup-web/vite.config.js:/app/vite.config.js
     networks:
       - pb
 
