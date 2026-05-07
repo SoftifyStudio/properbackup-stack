@@ -3,26 +3,65 @@ set -e
 
 CONF_DIR="/data/conf.d"
 GLOBAL_YML="$CONF_DIR/global.yml"
+BUFFER_URL="${PROPERBACKUP_BUFFER_URL:-http://buffer:7100}"
+UPLOAD_TOKEN="${PROPERBACKUP_UPLOAD_TOKEN:-dev-token-local}"
+OWNER_EMAIL="${PROPERBACKUP_OWNER_EMAIL:-}"
+SERVER_NAME="${PROPERBACKUP_SERVER_NAME:-Agent VPS}"
 
-# Generate global.yml from environment variables if it doesn't exist
-if [ ! -f "$GLOBAL_YML" ]; then
-  echo "Generating $GLOBAL_YML from environment variables..."
+# ── Wait for buffer to be healthy ──────────────────────────────────────
+echo "[agent-init] Waiting for buffer at $BUFFER_URL ..."
+TRIES=0
+while [ $TRIES -lt 60 ]; do
+  if wget -q --spider "$BUFFER_URL/health" 2>/dev/null; then
+    echo "[agent-init] Buffer is healthy."
+    break
+  fi
+  TRIES=$((TRIES + 1))
+  sleep 2
+done
+if [ $TRIES -ge 60 ]; then
+  echo "[agent-init] ERROR: Buffer not reachable after 120s. Starting agent anyway."
+fi
 
-  if [ -z "$PROPERBACKUP_USER_ID" ] || [ -z "$PROPERBACKUP_SERVER_ID" ]; then
-    echo "ERROR: PROPERBACKUP_USER_ID and PROPERBACKUP_SERVER_ID are required."
-    echo "Mount a .env file or pass them as environment variables."
+# ── Auto-register demo user & server ───────────────────────────────────
+if [ -n "$OWNER_EMAIL" ]; then
+  OWNER_PASS="${PROPERBACKUP_OWNER_PASSWORD:-ProperBackup2026!}"
+  SERVER_ID="${PROPERBACKUP_SERVER_ID:-demo-server-001}"
+
+  echo "[agent-init] Ensuring owner account: $OWNER_EMAIL"
+  wget -q -O /dev/null --post-data "{\"email\":\"$OWNER_EMAIL\",\"password\":\"$OWNER_PASS\"}" \
+    --header="Content-Type: application/json" \
+    "$BUFFER_URL/auth/register" 2>/dev/null || true
+
+  echo "[agent-init] Auto-registering server: $SERVER_ID for $OWNER_EMAIL"
+  wget -q -O /dev/null --post-data "{\"machineId\":\"$SERVER_ID\",\"ownerEmail\":\"$OWNER_EMAIL\",\"name\":\"$SERVER_NAME\"}" \
+    --header="Content-Type: application/json" \
+    --header="Authorization: Bearer $UPLOAD_TOKEN" \
+    "$BUFFER_URL/agent/auto-register" 2>/dev/null || true
+
+  echo "[agent-init] Auto-registration complete."
+fi
+
+# ── Generate global.yml from environment variables ─────────────────────
+if [ ! -f "$GLOBAL_YML" ] || [ "${PROPERBACKUP_FORCE_CONFIG:-false}" = "true" ]; then
+  echo "[agent-init] Generating $GLOBAL_YML ..."
+
+  if [ -z "$PROPERBACKUP_SERVER_ID" ]; then
+    echo "ERROR: PROPERBACKUP_SERVER_ID is required."
     exit 1
   fi
 
+  mkdir -p "$CONF_DIR"
+
   cat > "$GLOBAL_YML" <<EOF
 agent:
-  user_id: "$PROPERBACKUP_USER_ID"
+  user_id: "${PROPERBACKUP_USER_ID:-auto}"
   server_id: "$PROPERBACKUP_SERVER_ID"
-  buffer_url: "${PROPERBACKUP_BUFFER_URL:-http://buffer:7100}"
-  upload_token: "${PROPERBACKUP_UPLOAD_TOKEN:-dev-token-local}"
+  buffer_url: "$BUFFER_URL"
+  upload_token: "$UPLOAD_TOKEN"
   encryption_password: "${PROPERBACKUP_ENCRYPTION_PASSWORD:-change-me}"
   state_dir: "/data/state"
-  poll_interval_seconds: ${PROPERBACKUP_POLL_INTERVAL:-120}
+  poll_interval_seconds: ${PROPERBACKUP_POLL_INTERVAL:-60}
 
 default_excludes:
   - "*.log"
@@ -32,11 +71,11 @@ default_excludes:
   - ".DS_Store"
 EOF
 
-  echo "Generated $GLOBAL_YML"
+  echo "[agent-init] Generated $GLOBAL_YML"
 fi
 
-# Generate service config for /data/backup-source if no service configs exist
-SERVICE_COUNT=$(ls "$CONF_DIR"/*.yml 2>/dev/null | grep -v global.yml | wc -l)
+# ── Generate service config for /data/backup-source ────────────────────
+SERVICE_COUNT=$(ls "$CONF_DIR"/*.yml 2>/dev/null | grep -cv global.yml || echo 0)
 if [ "$SERVICE_COUNT" -eq 0 ]; then
   cat > "$CONF_DIR/backup.yml" <<EOF
 service: backup
@@ -48,10 +87,10 @@ exclude:
   - "*.tmp"
   - "cache"
 EOF
-  echo "Generated default service config: $CONF_DIR/backup.yml"
+  echo "[agent-init] Generated default service config."
 fi
 
-# Auto-detect binary name (properbackup-agent or properbackup-agent-jvm)
+# ── Auto-detect binary name ────────────────────────────────────────────
 AGENT_BIN=""
 for candidate in /opt/properbackup-agent/bin/properbackup-agent /opt/properbackup-agent/bin/properbackup-agent-jvm; do
   if [ -x "$candidate" ]; then
@@ -66,6 +105,7 @@ if [ -z "$AGENT_BIN" ]; then
   exit 1
 fi
 
+echo "[agent-init] Starting agent: $AGENT_BIN"
 exec "$AGENT_BIN" \
   --config "$GLOBAL_YML" \
   --conf-dir "$CONF_DIR" \

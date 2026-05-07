@@ -101,6 +101,10 @@ services:
       PROPERBACKUP_UPLOAD_TOKEN: ${PB_UPLOAD_TOKEN:-dev-token-local}
       PROPERBACKUP_ENCRYPTION_PASSWORD: ${PB_ENCRYPTION_PASS:-dev-encrypt-pass}
       PROPERBACKUP_POLL_INTERVAL: "60"
+      PROPERBACKUP_OWNER_EMAIL: ${PB_OWNER_EMAIL:-demo@properbackup.com}
+      PROPERBACKUP_OWNER_PASSWORD: ${PB_OWNER_PASSWORD:-ProperBackup2026!}
+      PROPERBACKUP_SERVER_NAME: ${PB_SERVER_NAME:-Demo VPS - Minecraft Server}
+      PROPERBACKUP_FORCE_CONFIG: "true"
     volumes:
       - ./sample-data:/data/backup-source:ro
       - agent-state:/data/state
