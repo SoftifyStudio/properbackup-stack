@@ -75,7 +75,7 @@ EOF
 fi
 
 # ── Generate service config for /data/backup-source ────────────────────
-SERVICE_COUNT=$(ls "$CONF_DIR"/*.yml 2>/dev/null | grep -cv global.yml || echo 0)
+SERVICE_COUNT=$(ls "$CONF_DIR"/*.yml 2>/dev/null | grep -v global.yml | wc -l)
 if [ "$SERVICE_COUNT" -eq 0 ]; then
   cat > "$CONF_DIR/backup.yml" <<EOF
 service: backup
