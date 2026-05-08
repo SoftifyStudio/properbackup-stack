@@ -1,9 +1,7 @@
 # Multi-stage build for ProperBackup Agent
 # Handles the properbackup-shared dependency via a temporary Gradle multi-project setup.
 
-FROM eclipse-temurin:21-jdk-alpine AS builder
-
-RUN apk add --no-cache bash
+FROM eclipse-temurin:21-jdk AS builder
 
 WORKDIR /workspace
 
@@ -23,12 +21,12 @@ COPY properbackup-agent/ properbackup-agent/
 RUN ./gradlew :properbackup-agent:installDist --no-daemon -x test
 
 # ---- Runtime ----
-FROM eclipse-temurin:21-jre-alpine
+FROM eclipse-temurin:21-jre
 
 LABEL maintainer="daniel@properbackup.com"
 LABEL description="ProperBackup Agent — encrypted differential backup agent (VPS simulation)"
 
-RUN addgroup -S pb && adduser -S pb -G pb
+RUN groupadd -r pb && useradd -r -g pb pb
 
 COPY --from=builder /workspace/properbackup-agent/build/install/properbackup-agent/ /opt/properbackup-agent/
 COPY properbackup-stack/docker-entrypoint-agent.sh /opt/properbackup-agent/docker-entrypoint.sh
