@@ -1,9 +1,7 @@
 # Multi-stage build for ProperBackup Buffer
 # Handles the properbackup-shared dependency via a temporary Gradle multi-project setup.
 
-FROM eclipse-temurin:21-jdk-alpine AS builder
-
-RUN apk add --no-cache bash
+FROM eclipse-temurin:21-jdk AS builder
 
 WORKDIR /workspace
 
@@ -23,7 +21,7 @@ COPY properbackup-buffer/ properbackup-buffer/
 RUN ./gradlew :properbackup-buffer:installDist --no-daemon -x test
 
 # ---- Runtime ----
-FROM eclipse-temurin:21-jre-alpine
+FROM eclipse-temurin:21-jre
 
 LABEL maintainer="daniel@properbackup.com"
 LABEL description="ProperBackup Buffer — backend API + SSE + storage orchestration"
