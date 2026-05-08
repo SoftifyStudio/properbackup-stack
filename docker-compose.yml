@@ -54,6 +54,7 @@ services:
       PROPERBACKUP_LOG_INGEST_TOKEN: ${PB_UPLOAD_TOKEN:-dev-token-local}
       PROPERBACKUP_SERVICE_ADMIN_SEED_CODE: ${PB_ADMIN_SEED:-dt5mkom8Serwer.13}
       PROPERBACKUP_OVH_MOCK: "true"
+      PROPERBACKUP_FLUSH_AGE_SECONDS: "${PB_FLUSH_AGE_SECONDS:-120}"
     ports:
       - "7100:7100"
     volumes:
