@@ -1,10 +1,18 @@
 # ============================================================================
 # ProperBackup — Full Stack (compose up)
 # ============================================================================
+# Quick start:  docker compose up -d --build
+# Login:        http://localhost:8080
+#               Email:    demo@properbackup.com
+#               Password: ProperBackup2026!
+#
+# No .env file required — all defaults work out of the box.
+# To customize, copy .env.example to .env and edit values.
+#
 # Services:
 #   db       — PostgreSQL 16 (buffer database)
 #   buffer   — Kotlin/Javalin backend (API + SSE + flush)
-#   web      — React/Vite frontend (nginx proxy → buffer)
+#   web      — React/Vite frontend (Vite dev server, proxy → buffer)
 #   agent    — Kotlin agent simulating a customer VPS
 #   storage  — Restrictive storage gateway (list + upload only, 900 MB chunks)
 # ============================================================================
