@@ -1,10 +1,18 @@
 # ============================================================================
 # ProperBackup — Full Stack (compose up)
 # ============================================================================
+# Quick start:  docker compose up -d --build
+# Login:        http://localhost:8080
+#               Email:    demo@properbackup.com
+#               Password: ProperBackup2026!
+#
+# No .env file required — all defaults work out of the box.
+# To customize, copy .env.example to .env and edit values.
+#
 # Services:
 #   db       — PostgreSQL 16 (buffer database)
 #   buffer   — Kotlin/Javalin backend (API + SSE + flush)
-#   web      — React/Vite frontend (nginx proxy → buffer)
+#   web      — React/Vite frontend (Vite dev server, proxy → buffer)
 #   agent    — Kotlin agent simulating a customer VPS
 #   storage  — Restrictive storage gateway (list + upload only, 900 MB chunks)
 # ============================================================================
@@ -68,20 +76,24 @@ services:
       retries: 10
       start_period: 30s
 
-  # ---------- Web Panel (nginx + React) ----------
+  # ---------- Web Panel (Vite dev server) ----------
   web:
     build:
       context: ../properbackup-web
-      dockerfile: Dockerfile
-      args:
-        VITE_BUFFER_URL: /api
-        VITE_BUFFER_TOKEN: ${PB_UPLOAD_TOKEN:-dev-token-local}
+      dockerfile: ../properbackup-stack/Dockerfile.web-dev
     container_name: pb-web
     depends_on:
       buffer:
         condition: service_healthy
+    environment:
+      VITE_PROXY_TARGET: http://buffer:7100
+      VITE_BUFFER_URL: /api
+      VITE_BUFFER_TOKEN: ${PB_UPLOAD_TOKEN:-dev-token-local}
     ports:
-      - "8080:80"
+      - "8080:5173"
+    volumes:
+      - ../properbackup-web/src:/app/src
+      - ../properbackup-web/vite.config.js:/app/vite.config.js
     networks:
       - pb
 
@@ -101,6 +113,10 @@ services:
       PROPERBACKUP_UPLOAD_TOKEN: ${PB_UPLOAD_TOKEN:-dev-token-local}
       PROPERBACKUP_ENCRYPTION_PASSWORD: ${PB_ENCRYPTION_PASS:-dev-encrypt-pass}
       PROPERBACKUP_POLL_INTERVAL: "60"
+      PROPERBACKUP_OWNER_EMAIL: ${PB_OWNER_EMAIL:-demo@properbackup.com}
+      PROPERBACKUP_OWNER_PASSWORD: ${PB_OWNER_PASSWORD:-ProperBackup2026!}
+      PROPERBACKUP_SERVER_NAME: ${PB_SERVER_NAME:-Demo VPS - Minecraft Server}
+      PROPERBACKUP_FORCE_CONFIG: "true"
     volumes:
       - ./sample-data:/data/backup-source:ro
       - agent-state:/data/state
