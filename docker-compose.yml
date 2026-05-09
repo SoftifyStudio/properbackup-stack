@@ -122,10 +122,10 @@ services:
     volumes:
       - ./sample-data:/data/backup-source:ro
       - agent-state:/data/state
+      - /proc:/host/proc:ro
     networks:
       - pb
     mem_limit: 256m
-    cpus: 0.5
 
   # ---------- Restrictive Storage (list + upload only, 900 MB chunks) ----------
   storage:
