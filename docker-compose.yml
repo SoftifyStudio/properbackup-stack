@@ -30,7 +30,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
-      - "${PB_DB_EXTERNAL_PORT:-5432}:5432"
+      - "${PB_DB_PORT:-5432}:5432"
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "properbackup"]
       interval: 5s
