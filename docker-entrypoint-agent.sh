@@ -90,23 +90,35 @@ EOF
   echo "[agent-init] Generated default service config."
 fi
 
-# ── Auto-detect binary name ────────────────────────────────────────────
-AGENT_BIN=""
-for candidate in /opt/properbackup-agent/bin/properbackup-agent /opt/properbackup-agent/bin/properbackup-agent-jvm; do
-  if [ -x "$candidate" ]; then
-    AGENT_BIN="$candidate"
+# ── Run agent from fat JAR ────────────────────────────────────────────
+AGENT_JAR=""
+
+# Find the shadow JAR (contains -all in name)
+for jar in /opt/properbackup-agent/*.jar; do
+  if echo "$jar" | grep -q "all"; then
+    AGENT_JAR="$jar"
     break
   fi
 done
 
-if [ -z "$AGENT_BIN" ]; then
-  echo "ERROR: No agent binary found in /opt/properbackup-agent/bin/"
-  ls -la /opt/properbackup-agent/bin/ 2>/dev/null
+# Fallback to first JAR if no -all found
+if [ -z "$AGENT_JAR" ]; then
+  for jar in /opt/properbackup-agent/*.jar; do
+    if [ -f "$jar" ]; then
+      AGENT_JAR="$jar"
+      break
+    fi
+  done
+fi
+
+if [ ! -f "$AGENT_JAR" ]; then
+  echo "ERROR: Agent JAR not found in /opt/properbackup-agent/"
+  ls -la /opt/properbackup-agent/ 2>/dev/null
   exit 1
 fi
 
-echo "[agent-init] Starting agent: $AGENT_BIN"
-exec "$AGENT_BIN" \
+echo "[agent-init] Starting agent: $AGENT_JAR"
+exec java -jar "$AGENT_JAR" \
   --config "$GLOBAL_YML" \
   --conf-dir "$CONF_DIR" \
   --headless \

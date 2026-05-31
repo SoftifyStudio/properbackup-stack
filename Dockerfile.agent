@@ -18,7 +18,7 @@ COPY properbackup-shared/ properbackup-shared/
 COPY properbackup-agent/ properbackup-agent/
 
 # Build agent (includes shared as dependency)
-RUN ./gradlew :properbackup-agent:installDist --no-daemon -x test
+RUN ./gradlew :properbackup-agent:shadowJar --no-daemon -x test
 
 # ---- Runtime ----
 FROM eclipse-temurin:21-jre
@@ -28,7 +28,7 @@ LABEL description="ProperBackup Agent — encrypted differential backup agent (V
 
 RUN groupadd -r pb && useradd -r -g pb pb
 
-COPY --from=builder /workspace/properbackup-agent/build/install/properbackup-agent/ /opt/properbackup-agent/
+COPY --from=builder /workspace/properbackup-agent/build/libs/*.jar /opt/properbackup-agent/
 COPY properbackup-stack/docker-entrypoint-agent.sh /opt/properbackup-agent/docker-entrypoint.sh
 
 RUN mkdir -p /data/state /data/conf.d /data/backup-source \
