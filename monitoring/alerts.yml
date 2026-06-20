@@ -1,0 +1,114 @@
+# ProperBackup Alerting Rules
+# Per observability-and-dr-spec.md [OBS-D1, OBS-D2]
+#
+# These rules define when to fire alerts via Slack/SMS.
+# Format: Prometheus-compatible (can be used with Alertmanager or custom cron checker).
+
+groups:
+  - name: buffer-critical
+    rules:
+      # SEV-1: Buffer completely down (health endpoint unreachable)
+      - alert: BufferDown
+        expr: probe_success{job="buffer-health"} == 0
+        for: 3m
+        labels:
+          severity: sev-1
+          channel: sms
+        annotations:
+          summary: "ProperBackup Buffer is DOWN"
+          description: "/health endpoint unreachable for >3 minutes. All client uploads blocked."
+          runbook: "docs/operations/runbook-buffer-down.md"
+
+      # SEV-1: PostgreSQL down
+      - alert: PostgresDown
+        expr: pg_up == 0
+        for: 2m
+        labels:
+          severity: sev-1
+          channel: sms
+        annotations:
+          summary: "PostgreSQL is DOWN"
+          description: "Database unreachable. Buffer cannot process any requests."
+          runbook: "docs/operations/runbook-pg-down.md"
+
+  - name: buffer-warning
+    rules:
+      # SEV-2: Disk >80% full (soft block threshold)
+      - alert: DiskAlmostFull
+        expr: node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"} < 0.20
+        for: 5m
+        labels:
+          severity: sev-2
+          channel: slack
+        annotations:
+          summary: "Disk usage >80%"
+          description: "Buffer will soft-block uploads at 80%. Free space: {{ $value | humanize }}%"
+          runbook: "docs/operations/runbook-disk-full.md"
+
+      # SEV-2: Force flush triggered (packs sitting >24h)
+      - alert: ForceFlushTriggered
+        expr: increase(pb_pack_force_flush_total[24h]) > 3
+        labels:
+          severity: sev-2
+          channel: slack
+        annotations:
+          summary: "Multiple force-flushes in 24h ({{ $value }})"
+          description: "Packs not reaching 900MB threshold. Check if clients stopped uploading."
+
+      # SEV-2: Circuit breaker open (agent side, reported via telemetry)
+      - alert: AgentCircuitBreakerOpen
+        expr: pb_agent_circuit_breaker_state == 1
+        for: 5m
+        labels:
+          severity: sev-2
+          channel: slack
+        annotations:
+          summary: "Agent circuit breaker OPEN"
+          description: "Agent cannot reach buffer. Check network/buffer health."
+
+  - name: buffer-info
+    rules:
+      # SEV-3: Stripe webhook DLQ growing
+      - alert: StripeDlqGrowing
+        expr: pb_stripe_dlq_size > 5
+        for: 15m
+        labels:
+          severity: sev-3
+          channel: slack
+        annotations:
+          summary: "Stripe webhook DLQ has {{ $value }} unprocessed events"
+          description: "Events failing to process. Check Stripe webhook logs."
+
+      # SEV-3: No agent telemetry in 2h (all agents dead?)
+      - alert: NoAgentTelemetry
+        expr: time() - max(pb_last_agent_heartbeat_timestamp) > 7200
+        for: 5m
+        labels:
+          severity: sev-3
+          channel: slack
+        annotations:
+          summary: "No agent telemetry received in >2h"
+          description: "Either all agents are offline or telemetry endpoint is broken."
+
+  - name: backup-monitoring
+    rules:
+      # SEV-2: PG backup missed (no successful backup in 26h)
+      - alert: PgBackupMissed
+        expr: time() - max(pg_backup_last_success_timestamp) > 93600
+        for: 1m
+        labels:
+          severity: sev-2
+          channel: slack
+        annotations:
+          summary: "PostgreSQL backup missed (>26h since last success)"
+          description: "Check pg-backup.sh cron and healthchecks.io for details."
+
+      # SEV-2: OVH cost spike
+      - alert: OvhCostSpike
+        expr: increase(pb_ovh_bytes_uploaded_total[24h]) > 50000000000  # >50GB/day
+        labels:
+          severity: sev-2
+          channel: slack
+        annotations:
+          summary: "OVH upload spike: {{ $value | humanize }}B in 24h"
+          description: "Unusual upload volume. Check for runaway agents or attack."
